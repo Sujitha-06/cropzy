@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Camera App</title>
+  <style>
+    body {
+      margin: 0;
+      max-height: 100vh;
+      overflow: hidden;
+    }
+    canvas {
+      display: none;
+    }
+    button {
+      border: 0;
+      outline: none;
+      background: #00000070;
+      color: #FFFFFF;
+      padding: 4px 8px;
+      height: 30px;
+      min-width: 30px;
+      border-radius: 24px;
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      transition: 0.3s ease-in;
+    }
+
+    .camera-ctn {
+      position: relative;
+      background: #000000;
+    }
+    .camera-view video {
+      height: 100vh;
+      width: 100vw;
+      object-fit: cover;
+      transform: scaleX(-1);
+    }
+
+    .camera-bottom {
+      height: 250px;
+      background: #00000050;
+      position: absolute;
+      inset: 0;
+      top: auto;
+      padding: 0 5%;
+      display: grid;
+      place-items: center;
+    }
+    .inner {
+      display: grid;
+      place-items: center;
+      max-width: 500px;
+    }
+
+    .lens-modifier {
+      display: flex;
+      position: absolute;
+      top: -50px;
+      background: #00000070;
+      color: #FFFFFF;
+      border-radius: 24px;
+      height: 30px;
+      padding: 0 4px;
+    }
+    .lens-modifier button {
+      background: transparent;
+      font-weight: 700;
+    }
+    .lens-modifier button.active, .lens-modifier button:active {
+      background: #FFFFFF;
+      color: #000000;
+    }
+
+    .modes {
+      display: flex;
+      align-items: center;
+      column-gap: 1rem;
+      margin-bottom: 2rem;
+    }
+    .modes button {
+      font-size: 1.15rem;
+      font-weight: 300;
+      background: transparent;
+    }
+    .modes button.active {
+      background: #00000070;
+      color: #FFFFFF;
+      height: 40px;
+      padding: 0 1rem;
+      font-weight: 700;
+    }
+
+    .shutter-ctn {
+      display: flex;
+      align-items: center;
+      justify-content: space-around;
+      width: 100%;
+    }
+    .previous-shots {
+      background-position: center;
+      background-size: cover;
+      background-repeat: no-repeat;
+      height: 55px;
+      width: 55px;
+      border-radius: 50%;
+    }
+    .shutter {
+      height: 80px;
+      width: 80px;
+      background: #FFFFFF;
+      border-radius: 50%;
+    }
+    .shutter:active {
+      transform: scale(0.8);
+    }
+    .switch-device {
+      height: 55px;
+      width: 55px;
+      border-radius: 50%;
+    }
+
+    .gallery-view {
+      height: 100vh;
+      width: 100vw;
+      position: absolute;
+      background: #000000;
+      inset: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      transition: 0.4s;
+      transform: translateX(100vw);
+      flex-direction: column;
+    }
+    .gallery-view.show-gallery {
+      transform: translateX(0);
+    }
+    .gallery-content {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+    }
+    .gallery-view img, .gallery-view video {
+      height: auto;
+      width: 80%;
+      max-height: 80vh;
+      object-fit: contain;
+      display: none;
+    }
+    .gallery-view button {
+      position: absolute;
+      top: 45%;
+      left: 5%;
+      font-size: 1.2rem;
+    }
+    .gallery-view button#next {
+      right: 5%;
+      left: auto;
+    }
+    .gallery-view button#close-gallery {
+      left: 5%;
+      top: 5%;
+    }
+  </style>
+</head>
+<body>
+  <div class="camera-ctn">
+    <canvas id="canvas"></canvas>
+    <div class="camera-view">
+      <video id="camera-stream" autoplay loop muted></video>
+    </div>
+    <div class="camera-bottom">
+      <div class="inner">
+        <div class="lens-modifier">
+          <button data-zoom="0.5">.5</button>
+          <button data-zoom="1" class="active">1x</button>
+          <button data-zoom="3">3</button>
+        </div>
+        <div class="modes">
+          <button id="photo-mode" class="active">PHOTO</button>
+          <button id="video-mode">VIDEO</button>
+        </div>
+        <div class="shutter-ctn">
+          <button id="photos-btn" class="previous-shots"></button>
+          <button id="shutter" class="shutter"></button>
+          <button class="switch-device">Sw</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="gallery-view">
+    <button id="prev">PREV</button>
+    <div class="gallery-content">
+      <img id="gallery-image" data-index="0" src="" alt="current viewed img" style="display: none;">
+      <video id="gallery-video" data-index="0" controls style="display: none;"></video>
+    </div>
+    <button id="next">NEXT</button>
+    <button id="close-gallery">GO BACK</button>
+  </div>
+
+  <script>
+    const cameraVideoStream = document.getElementById('camera-stream');
+    const shutterButton = document.getElementById('shutter');
+    const photosButton = document.getElementById('photos-btn');
+    const gallery = document.querySelector('.gallery-view');
+    const currentImageElement = document.getElementById('gallery-image');
+    const currentVideoElement = document.getElementById('gallery-video');
+    const closeGalleryButton = document.getElementById('close-gallery');
+    const nextButton = document.getElementById('next');
+    const prevButton = document.getElementById('prev');
+    const canvas = document.getElementById('canvas');
+    const zoomButtons = document.querySelectorAll('.lens-modifier button');
+    const photoModeButton = document.getElementById('photo-mode');
+    const videoModeButton = document.getElementById('video-mode');
+
+    let width = window.innerWidth;
+    let height = 0;
+    let streaming = false;
+    let currentZoom = 1;
+    const capturedImages = [];
+    const recordedVideos = [];
+    let isRecording = false;
+    let mediaRecorder;
+    let currentStream;
+
+    // Connect media device
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      navigator.mediaDevices.getUserMedia({ video: true })
+        .then((stream) => {
+          cameraVideoStream.srcObject = stream;
+          cameraVideoStream.play();
+          currentStream = stream;
+          mediaRecorder = new MediaRecorder(stream);
+          
+          mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) {
+              const videoURL = URL.createObjectURL(event.data);
+              recordedVideos.push(videoURL);
+            }
+          };
+        })
+        .catch((err) => console.error("Error accessing camera: ", err));
+    }
+
+    cameraVideoStream.addEventListener("canplay", (ev) => {
+      if (!streaming) {
+        height = cameraVideoStream.videoHeight / (cameraVideoStream.videoWidth / width);
+
+        if (isNaN(height)) {
+          height = width / (4 / 3);
+        }
+
+        canvas.setAttribute("width", width);
+        canvas.setAttribute("height", height);
+        cameraVideoStream.setAttribute("width", width);
+        cameraVideoStream.setAttribute("height", height);
+        streaming = true;
+      }
+    }, false);
+
+    // Capture snapshots using HTML Canvas
+    function captureImage() {
+      const canvasContext = canvas.getContext('2d');
+      canvas.width = width;
+      canvas.height = height;
+      canvasContext.drawImage(cameraVideoStream, 0, 0, width, height);
+
+      // Convert captured data to image (base64)
+      const data = canvas.toDataURL('image/png');
+      currentImageElement.src = data;
+      photosButton.style.backgroundImage = `url(${data})`;
+      capturedImages.push(data);
+      currentImageElement.setAttribute('data-index', capturedImages.length - 1);
+    }
+
+    shutterButton.addEventListener('click', () => {
+      if (photoModeButton.classList.contains('active')) {
+        captureImage();
+      } else if (videoModeButton.classList.contains('active')) {
+        if (isRecording) {
+          mediaRecorder.stop();
+          isRecording = false;
+          shutterButton.style.backgroundColor = '#000000'; // Change color to indicate not recording
+        } else {
+          mediaRecorder.start();
+          isRecording = true;
+          shutterButton.style.backgroundColor = '#FF0000'; // Change color to indicate recording
+        }
+      }
+    });
+
+    // Event handlers to open and close the gallery
+    photosButton.addEventListener('click', () => {
+      gallery.classList.add('show-gallery');
+      const index = capturedImages.length + recordedVideos.length - 1;
+      if (capturedImages[index]) {
+        currentImageElement.src = capturedImages[index];
+        currentImageElement.style.display = 'block';
+        currentVideoElement.style.display = 'none';
+      } else {
+        currentVideoElement.src = recordedVideos[index - capturedImages.length];
+        currentVideoElement.style.display = 'block';
+        currentImageElement.style.display = 'none';
+      }
+      currentImageElement.setAttribute('data-index', index);
+    });
+
+    closeGalleryButton.addEventListener('click', () => {
+      gallery.classList.remove('show-gallery');
+      currentImageElement.src = '';
+      currentVideoElement.src = '';
+      currentImageElement.style.display = 'none';
+      currentVideoElement.style.display = 'none';
+    });
+
+    // Event handlers to browse gallery (next and previous)
+    nextButton.addEventListener('click', () => {
+      const index = Number(currentImageElement.getAttribute('data-index'));
+      const totalImages = capturedImages.length;
+      const totalVideos = recordedVideos.length;
+
+      if (index < totalImages - 1) {
+        currentImageElement.src = capturedImages[index + 1];
+        currentImageElement.setAttribute('data-index', index + 1);
+        currentImageElement.style.display = 'block';
+        currentVideoElement.style.display = 'none';
+      } else if (index - totalImages < totalVideos - 1) {
+        currentVideoElement.src = recordedVideos[index - totalImages + 1];
+        currentVideoElement.setAttribute('data-index', index + 1);
+        currentVideoElement.style.display = 'block';
+        currentImageElement.style.display = 'none';
+      }
+    });
+
+    prevButton.addEventListener('click', () => {
+      const index = Number(currentImageElement.getAttribute('data-index'));
+      const totalImages = capturedImages.length;
+      const totalVideos = recordedVideos.length;
+
+      if (index > 0) {
+        if (index <= totalImages) {
+          currentImageElement.src = capturedImages[index - 1];
+          currentImageElement.setAttribute('data-index', index - 1);
+          currentImageElement.style.display = 'block';
+          currentVideoElement.style.display = 'none';
+        } else {
+          currentVideoElement.src = recordedVideos[index - totalImages - 1];
+          currentVideoElement.setAttribute('data-index', index - 1);
+          currentVideoElement.style.display = 'block';
+          currentImageElement.style.display = 'none';
+        }
+      }
+    });
+
+    // Zoom functionality
+    zoomButtons.forEach(button => {
+      button.addEventListener('click', () => {
+        currentZoom = parseFloat(button.getAttribute('data-zoom'));
+        zoomButtons.forEach(btn => btn.classList.remove('active'));
+        button.classList.add('active');
+        cameraVideoStream.style.transform = `scale(${currentZoom})`;
+      });
+    });
+
+    // Switch between photo and video modes
+    photoModeButton.addEventListener('click', () => {
+      photoModeButton.classList.add('active');
+      videoModeButton.classList.remove('active');
+    });
+
+    videoModeButton.addEventListener('click', () => {
+      videoModeButton.classList.add('active');
+      photoModeButton.classList.remove('active');
+    });
+  </script>
+</body>
+</html>
